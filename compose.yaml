@@ -1,0 +1,75 @@
+name: emberpath
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: emberpath
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emberpath_local}
+      POSTGRES_DB: emberpath
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emberpath -d emberpath"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  migrate:
+    build: ../Emberpath-weight-service
+    image: emberpath-weight-service:local
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://emberpath:${POSTGRES_PASSWORD:-emberpath_local}@postgres:5432/emberpath
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  weight-service:
+    build: ../Emberpath-weight-service
+    image: emberpath-weight-service:local
+    environment:
+      DATABASE_URL: postgresql+psycopg://emberpath:${POSTGRES_PASSWORD:-emberpath_local}@postgres:5432/emberpath
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  web:
+    build: ../Emberpath-web
+    ports:
+      - "0.0.0.0:${WEB_PORT:-5173}:80"
+    depends_on:
+      weight-service:
+        condition: service_healthy
+
+  postgres-test:
+    image: postgres:17-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: emberpath
+      POSTGRES_PASSWORD: emberpath_test
+      POSTGRES_DB: emberpath_test
+    ports:
+      - "127.0.0.1:${TEST_POSTGRES_PORT:-5433}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emberpath -d emberpath_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  postgres-data:
