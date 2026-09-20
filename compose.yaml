@@ -32,6 +32,9 @@ services:
     build: ../Emberpath-weight-service
     image: emberpath-weight-service:local
     environment:
+      DATABASE_REQUIRED: "true"
+      CLERK_ISSUER: ${CLERK_ISSUER:-}
+      CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-http://localhost:5173,http://127.0.0.1:5173}
       DATABASE_URL: postgresql+psycopg://emberpath:${POSTGRES_PASSWORD:-emberpath_local}@postgres:5432/emberpath
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
@@ -39,14 +42,17 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; from src.core.config import get_settings; from src.core.healthcheck import healthcheck_host; request = urllib.request.Request('http://127.0.0.1:8000/readyz', headers={'Host': healthcheck_host(get_settings())}); urllib.request.urlopen(request, timeout=3).close()"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
       start_period: 5s
 
   web:
-    build: ../Emberpath-web
+    build:
+      context: ../Emberpath-web
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     ports:
       - "0.0.0.0:${WEB_PORT:-5173}:80"
     depends_on:

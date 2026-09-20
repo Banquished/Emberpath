@@ -13,8 +13,12 @@ Repos/
   Emberpath-web/             # React og API-klient
 ```
 
+Se [migreringsnotatet](docs/weight-service-template-migration.md) for
+kontrollpunkter og lokal sikkerhetskopi ved overgang til FastAPI-malen.
+
 ## Start hele appen med Docker
 
+Konfigurer først Clerk som beskrevet i [autentiseringsoppsettet](docs/authentication.md).
 Installer Docker med Compose, start Docker-motoren og plasser repoene som
 søskenmapper som vist over. Stopp eventuell Vite-server med `Ctrl+C` først;
 Vite og Compose-web bruker begge port 5173. Kjør fra `Emberpath`:
@@ -25,17 +29,21 @@ docker compose up --build -d --wait
 
 - Web: <http://localhost:5173/weight>
 - API-dokumentasjon: <http://localhost:8000/docs>
+- Tjenestemetadata: <http://localhost:8000/>
 - Helsesjekk: <http://localhost:8000/healthz>
+- Databaseberedskap: <http://localhost:8000/readyz>
 
 Compose starter PostgreSQL, kjører Alembic-migreringer og starter deretter
 backend og web. Web serveres av Nginx, som videresender `/api` til backend.
+Backend krever PostgreSQL (`DATABASE_REQUIRED=true`). Compose bruker `/readyz`
+før web starter; `/healthz` og `/` fungerer uten databaseforbindelse.
 Web lytter på alle nettverksgrensesnitt på port 5173. API-et på port 8000 og
 PostgreSQL er kun tilgjengelige direkte fra denne maskinen. Oppsettet er for
-lokal utvikling uten autentisering. Hubrepoet kjører ingen egen webserver;
+lokal utvikling med Clerk-autentisering. Hubrepoet kjører ingen egen webserver;
 en eventuell dokumentasjonsserver kan ikke bruke port 8000 samtidig med API-et.
 
-Standardverdiene virker uten `.env`. Kopier `.env.example` til `.env` hvis du
-vil endre porter eller det lokale databasepassordet. Bruk et URL-sikkert
+Sett Clerk-verdiene i `.env`; behold eventuelle eksisterende databaseverdier.
+Ved førstegangsoppsett kan `.env.example` kopieres til `.env`. Bruk et URL-sikkert
 passord. PostgreSQL setter passordet ved første opprettelse av datavolumet;
 endring av `.env` endrer ikke passordet i en eksisterende database.
 
@@ -97,7 +105,9 @@ database trenger ikke eksponeres på nettverket.
 
 PC-en må være på, nettverket må tillate trafikk mellom enhetene, og Windows-
 brannmuren må tillate innkommende TCP-trafikk på port 5173 for det aktuelle
-nettverket. Bruk kun et betrodd lokalt nettverk til denne appen uten innlogging.
+nettverket. Legg telefonens faktiske webadresse til `CLERK_AUTHORIZED_PARTIES`.
+Clerk kan kreve HTTPS for innlogging fra andre verter enn localhost; se
+[autentiseringsoppsettet](docs/authentication.md). Bruk et betrodd nettverk.
 
 ## Tester og kodekontroll
 
@@ -107,9 +117,11 @@ port 5433. De skal aldri kjøres mot databasen med egne vektlogger.
 ```powershell
 docker compose --profile test up -d --wait postgres-test
 cd ..\Emberpath-weight-service
+$env:TEST_DATABASE_URL = "postgresql+psycopg://emberpath:emberpath_test@127.0.0.1:5433/emberpath_test"
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+uv run pyright
 ```
 
 Testdatabasen har navnet `emberpath_test`, brukeren `emberpath` og det lokale
@@ -133,7 +145,7 @@ docker compose --profile test stop postgres-test
 ## API
 
 En vektlogg har `id`, `date` (YYYY-MM-DD) og `weight_kg` (tall i kg, maks to
-desimaler). Én logg tillates per dato. Alle datoer er kalenderdatoer uten
+desimaler). Én logg tillates per bruker og dato. Alle datoer er kalenderdatoer uten
 tidssone; skjemaet foreslår dagens lokale dato.
 
 | Metode | Endepunkt | Handling |
@@ -144,5 +156,6 @@ tidssone; skjemaet foreslår dagens lokale dato.
 | PATCH | `/weight-logs/{id}` | Endre dato eller vekt |
 | DELETE | `/weight-logs/{id}` | Slett logg |
 
-Duplikatdato gir 409, manglende logg gir 404 og ugyldig input gir 422.
+Alle vektruter krever et gyldig Clerk-sessiontoken som `Authorization: Bearer`.
+Duplikatdato gir 409, manglende eller andre brukeres logg gir 404 og ugyldig input gir 422.
 `GET /healthz` sjekker at API-et kjører og er uavhengig av databasen.
