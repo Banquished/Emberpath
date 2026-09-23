@@ -144,6 +144,9 @@ docker compose --profile test stop postgres-test
 
 ## API
 
+Se [import og eksport](docs/weight-data-transfer.md) for datafiler med komma, semikolon eller tabulator,
+konvertering fra pounds til kilogram og forhåndsvisning før import.
+
 En vektlogg har `id`, `date` (YYYY-MM-DD) og `weight_kg` (tall i kg, maks to
 desimaler). Én logg tillates per bruker og dato. Alle datoer er kalenderdatoer uten
 tidssone; skjemaet foreslår dagens lokale dato.
@@ -152,10 +155,67 @@ tidssone; skjemaet foreslår dagens lokale dato.
 |---|---|---|
 | POST | `/weight-logs` | Opprett logg |
 | GET | `/weight-logs` | Hent historikk, nyeste dato først |
+| GET | `/weight-logs/summary` | Oppsummer valgt periode for innlogget bruker |
+| GET | `/weight-logs/rolling-average` | Hent 7-, 14- eller 30-dagers glidende gjennomsnitt |
 | GET | `/weight-logs/{id}` | Hent én logg |
 | PATCH | `/weight-logs/{id}` | Endre dato eller vekt |
 | DELETE | `/weight-logs/{id}` | Slett logg |
+| GET | `/weight-goals/active` | Hent aktivt vektmål, eller `null` |
+| PUT | `/weight-goals/active` | Opprett eller erstatt aktivt vektmål |
+| PATCH | `/weight-goals/{id}` | Marker aktivt mål som fullført eller avbrutt |
 
 Alle vektruter krever et gyldig Clerk-sessiontoken som `Authorization: Bearer`.
 Duplikatdato gir 409, manglende eller andre brukeres logg gir 404 og ugyldig input gir 422.
 `GET /healthz` sjekker at API-et kjører og er uavhengig av databasen.
+
+Oppsummeringen tar valgfrie `start_date` og `end_date` i formatet YYYY-MM-DD,
+inkludert begge grensene. Uten grenser brukes hele historikken. Responsen gir
+antall registreringer, gjennomsnittsvekt, første og siste registrering, samt
+endring i kg og prosent fra første til siste registrering. Dager uten målinger
+teller ikke i gjennomsnittet. Tall avrundes til to desimaler; endring krever minst
+to målinger. Tomme perioder gir antall 0 og `null` for de andre verdiene.
+Kortene over grafen følger samme periodefilter som grafen og historikken, og
+oppdateres når en registrering opprettes, endres eller slettes.
+
+Grafens glidende gjennomsnitt kan settes til 7, 14 eller 30 dager med
+«Rolling average». Standard er 7 dager. Backend tar parameteren
+`window_days=7|14|30`; andre verdier gir 422. Vinduet inkluderer måledatoen og
+de foregående `window_days - 1` kalenderdagene. Kun registrerte målinger telles;
+delvise vinduer er tillatt og manglende dager telles ikke som null.
+Valgfrie `start_date` og `end_date` begrenser returnerte punkter, men målinger
+før perioden inngår fortsatt i beregningen. Responsen gir valgt `window_days`
+og `points` med `date`, `mean_weight_kg` og `measurement_count`.
+Alle beregninger gjelder innlogget bruker. Frontend beholder valgt vindu når
+periodefilteret endres, og cacher vinduene separat.
+## Personlige vektmål
+
+Weight-service eier vektmålene. Hver bruker kan ha ett aktivt mål med
+`target_weight_kg`, `start_date` og valgfri `target_date`. For nye mål med måldato
+må datoen være etter startdatoen. Når et mål erstattes, beholdes det gamle med status `replaced`.
+Et aktivt mål kan avsluttes eksplisitt med status `completed` eller `cancelled`;
+en måling som passerer målvekten fullfører ikke målet automatisk.
+
+Webappen viser det aktive målet med en stiplet, lavendelfarget linje i grafen.
+Uten måldato er linjen flat. Med måldato og lagret startvekt viser den en planlagt
+utvikling fra startvekten til målvekten. Grafen viser maksimalt én kalendermåned
+fremover, med uendret helning og faktisk måldato. «Show goal» skjuler eller viser
+mållinjen; målinger og oppsummeringer følger fortsatt det valgte periodefilteret.
+Linjen viser dagens aktive plan, ikke en prognose eller en historisk målkurve.
+
+`baseline_weight_kg` lagres på målet. Ved oppretting kan startvekten oppgis
+manuelt; ellers brukes siste registrering på eller før startdatoen. Et datert
+mål uten en slik registrering krever at startvekten oppgis. Senere målinger
+endrer ikke den lagrede startvekten. Eksisterende mål uten startvekt beholder
+flat linje til målet oppdateres med en startvekt.
+Ved endring av et mål med samme startdato beholdes lagret startvekt dersom en
+ny verdi ikke oppgis.
+
+API-responsens `plan` gir antall dager, total endring og planlagt endring per
+uke og fjortendagersperiode. Ukentlig endring beregnes som
+`(målvekt - startvekt) * 7 / antall dager`, avrundet til to desimaler.
+Negative tall betyr planlagt vektnedgang, positive tall planlagt oppgang.
+Uten gyldig datoperiode og startvekt er `plan` lik `null`. Dette er beregninger
+av brukerens valgte plan, ikke en anbefalt endringstakt.
+
+Andre tjenester skal bruke API-et for å lese mål, ikke lese eller endre tabellen
+direkte. Alle målruter krever samme autentisering og brukerisolasjon som vektlogger.
