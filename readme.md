@@ -9,12 +9,17 @@ sin egen Dockerfile:
 ```text
 Repos/
   Emberpath/                 # compose.yaml og dokumentasjon
+  Emberpath-nutrition-service/ # FastAPI-skjelett for ernæringstjenesten
   Emberpath-weight-service/  # FastAPI, PostgreSQL-modell og migreringer
   Emberpath-web/             # React og API-klient
 ```
 
 Se [migreringsnotatet](docs/weight-service-template-migration.md) for
 kontrollpunkter og lokal sikkerhetskopi ved overgang til FastAPI-malen.
+Se [ernæringstjenestens PRD](docs/nutrition-service/prd.md) for planlagt
+kalkulator og ernæringsplaner. Repoet finnes, men tjenesten er ennå ikke
+implementert eller lagt til i Compose; det trengs ikke for å starte det
+nåværende Compose-oppsettet.
 
 ## Start hele appen med Docker
 
