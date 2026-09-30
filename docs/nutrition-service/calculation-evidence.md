@@ -21,8 +21,8 @@ general adult starting point by a [comparative review](https://pubmed.ncbi.nlm.n
 For estimated maintenance, the [2023 Dietary Reference Intakes for Energy](https://www.nationalacademies.org/read/26818/chapter/2)
 provide separate total-energy-expenditure equations for men and women age 19
 and older by activity category. They are the selected v1.0 maintenance
-method, subject to verifying input eligibility and calculation reference
-cases. Do not silently treat a generic multiplier of resting energy as a
+method, with technical input bounds and calculation reference cases covered
+by service tests. Do not silently treat a generic multiplier of resting energy as a
 validated individual measurement. Resting and maintenance values use
 different methods and both remain estimates. A general activity category
 does not make the maintenance method strength-sport specific.
@@ -46,5 +46,10 @@ people in an energy deficit may need more protein; neither source establishes
 a universally safe minimum or maximum for every strength sport.
 The `1.6 g/kg/day` protein, `30%` fat share, steady `25 g/day` fibre and
 approximately `4/9/4` carbohydrate balancing are product starting choices,
-not an individually validated nutrition method. Numeric input bounds,
-rounding and day-level safety review remain open.
+not an individually validated nutrition method. Numeric input bounds and
+rounding are defined in the versioned service contract; individual day-level
+appropriateness and broader-release safety review remain unresolved.
+
+## Day-level allocation risk
+
+The [2023 IOC consensus on Relative Energy Deficiency in Sport](https://pubmed.ncbi.nlm.nih.gov/37752011/) describes low energy availability relative to exercise energy expenditure and individual factors, including risks for male and female athletes. A seven-day calorie sum, general activity category or mathematically feasible macro allocation cannot establish that each planned day is appropriate for a strength-training user. This source does not supply a universal daily calorie floor for this calculator. For the current PoC, reject mathematically infeasible weekdays and require a visible day-level warning and explicit acknowledgement for each plan save or replacement with a negative user-entered adjustment or uneven weekday allocation; this does not certify safety. These validations apply to every authenticated user's plan, independently of deployment admission policy. Broader self-service release needs separate review.

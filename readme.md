@@ -1,7 +1,8 @@
 # Emberpath
 
-Emberpath samler vektlogging, trening og kosthold. Første funksjon er daglig
-vektlogging med oppretting, historikk, redigering og sletting.
+Emberpath samler vektlogging, trening og kosthold. Den lokale appen har en
+vektlogg og en innloggingsbeskyttet ernæringskalkulator med lagrede planer.
+Treningsfunksjoner er ennå ikke implementert.
 
 Dette repoet eier felles dokumentasjon og Docker Compose. Hvert app-repo eier
 sin egen Dockerfile:
@@ -9,17 +10,15 @@ sin egen Dockerfile:
 ```text
 Repos/
   Emberpath/                 # compose.yaml og dokumentasjon
-  Emberpath-nutrition-service/ # FastAPI-skjelett for ernæringstjenesten
+  Emberpath-nutrition-service/ # FastAPI, egen planlagring og migreringer
   Emberpath-weight-service/  # FastAPI, PostgreSQL-modell og migreringer
   Emberpath-web/             # React og API-klient
 ```
 
 Se [migreringsnotatet](docs/weight-service-template-migration.md) for
 kontrollpunkter og lokal sikkerhetskopi ved overgang til FastAPI-malen.
-Se [ernæringstjenestens PRD](docs/nutrition-service/prd.md) for planlagt
-kalkulator og ernæringsplaner. Repoet finnes, men tjenesten er ennå ikke
-implementert eller lagt til i Compose; det trengs ikke for å starte det
-nåværende Compose-oppsettet.
+Se [ernæringstjenestens PRD](docs/nutrition-service/prd.md) for avgrensning,
+beregningsmetoder, planlivssyklus og begrensningene for privat bruk.
 
 ## Start hele appen med Docker
 
@@ -32,34 +31,51 @@ Vite og Compose-web bruker begge port 5173. Kjør fra `Emberpath`:
 docker compose up --build -d --wait
 ```
 
-- Web: <http://localhost:5173/weight>
-- API-dokumentasjon: <http://localhost:8000/docs>
-- Tjenestemetadata: <http://localhost:8000/>
-- Helsesjekk: <http://localhost:8000/healthz>
-- Databaseberedskap: <http://localhost:8000/readyz>
+- Web (startside): <http://localhost:5173/>
+- Vektlogg: <http://localhost:5173/weight>
+- Ernæring: <http://localhost:5173/nutrition>
+- Vekt-API: <http://localhost:8000/docs>
+- Ernærings-API: <http://localhost:8001/docs>
 
-Compose starter PostgreSQL, kjører Alembic-migreringer og starter deretter
-backend og web. Web serveres av Nginx, som videresender `/api` til backend.
-Backend krever PostgreSQL (`DATABASE_REQUIRED=true`). Compose bruker `/readyz`
-før web starter; `/healthz` og `/` fungerer uten databaseforbindelse.
-Web lytter på alle nettverksgrensesnitt på port 5173. API-et på port 8000 og
-PostgreSQL er kun tilgjengelige direkte fra denne maskinen. Oppsettet er for
-lokal utvikling med Clerk-autentisering. Hubrepoet kjører ingen egen webserver;
-en eventuell dokumentasjonsserver kan ikke bruke port 8000 samtidig med API-et.
+Dette er standardportene. `WEIGHT_API_PORT` og `NUTRITION_API_PORT` i
+hubens `.env` styrer API-portene på vertsmaskinen; for eksempel gir
+`NUTRITION_API_PORT=8002` dokumentasjon på <http://localhost:8002/docs>.
+Det eldre `API_PORT` støttes fortsatt som reserveverdi for Weight, men bruk
+`WEIGHT_API_PORT` i nye og oppdaterte oppsett.
 
-Sett Clerk-verdiene i `.env`; behold eventuelle eksisterende databaseverdier.
-Ved førstegangsoppsett kan `.env.example` kopieres til `.env`. Bruk et URL-sikkert
-passord. PostgreSQL setter passordet ved første opprettelse av datavolumet;
-endring av `.env` endrer ikke passordet i en eksisterende database.
+Compose starter to separate PostgreSQL-databaser og kjører hver tjenestes
+Alembic-migrering. Web venter på vekttjenestens `/readyz`, men ikke på
+ernæringstjenesten; startsiden og vektloggen virker fortsatt dersom
+ernæring er utilgjengelig.
+Nginx sender `/api/nutrition/v1/...` til ernæringstjenestens `/api/v1/...`
+og de eksisterende vektkallene under `/api/...` til vekttjenesten.
+Begge API-er krever PostgreSQL (`DATABASE_REQUIRED=true`) for plan- og
+vektlagring, og ernæringstjenesten har egen migrering og beredskapssjekk.
+`/healthz` og `/` er offentlige uten databaseforbindelse. Web lytter på alle nettverksgrensesnitt
+på port 5173; API-ene på port 8000/8001 og databasene er bundet til lokal
+maskin. Oppsettet er for lokal utvikling med Clerk-autentisering.
+Hubrepoet kjører ingen egen webserver.
+
+Sett Clerk-verdiene i hubens `.env`; behold eventuelle eksisterende vektdata
+og databaseverdier. Compose leser denne filen, ikke tjenesterepoenes `.env`.
+Begge tjenester verifiserer innlogging og isolerer data per bruker.
+Ernæringsplaner kan lagres når innlogging og migrert database er tilgjengelig;
+det finnes ikke lenger en egen eier-ID eller bryter for planskriving.
+Fjern gamle `CLERK_OWNER_SUBJECT` og `NUTRITION_PLAN_WRITES_ENABLED` fra
+hubens `.env`. Ved førstegangsoppsett kan `.env.example` kopieres til `.env`;
+ikke overskriv en eksisterende fil. Bruk ulike URL-sikre passord for databasene. PostgreSQL
+setter passord ved første opprettelse av hvert datavolum; endring av `.env`
+endrer ikke passordet i en eksisterende database.
 
 ```powershell
 docker compose ps
-docker compose logs --tail=100 weight-service
+docker compose logs --tail=100 weight-service nutrition-service
 docker compose down
 ```
 
-Vektloggene lagres i volumet `postgres-data` og bevares når containerne
-stoppes eller bygges på nytt. `docker compose down -v` sletter også lagrede data.
+Vektloggene lagres i `postgres-data`; ernæringsplanene lagres separat i
+`nutrition-postgres-data`. Begge bevares når containere stoppes eller bygges
+på nytt. `docker compose down -v` sletter begge datavolumene.
 
 ## Lokal utvikling med automatisk omlasting
 
@@ -67,7 +83,7 @@ Kjør PostgreSQL og backend med Compose, og web med Vite. Fra dette repoet:
 
 ```powershell
 docker compose stop web
-docker compose up --build -d --wait weight-service
+docker compose up --build -d --wait weight-service nutrition-service
 ```
 
 Dette starter også databasen og kjører migreringene. Start web i en annen terminal:
@@ -78,8 +94,12 @@ npm ci
 npm run dev
 ```
 
-Åpne <http://localhost:5173/weight>. Vite lytter på `0.0.0.0:5173` og
-videresender `/api` til `127.0.0.1:8000`. Den avslutter hvis port 5173 er
+Åpne <http://localhost:5173/> for startsiden eller <http://localhost:5173/weight>
+for vektloggen. Vite lytter på `0.0.0.0:5173` og
+videresender vekt-API-et under `/api` til `127.0.0.1:8000` og ernæringsruter
+under `/api/nutrition/v1` til `127.0.0.1:8001`. Bruk
+`NUTRITION_SERVICE_URL` i Vite-prosessen hvis Compose-porten er endret.
+Vite avslutter hvis port 5173 er
 opptatt, så stopp prosessen som bruker porten før oppstart.
 
 For automatisk omlasting av backend også, stopp Compose-backend og start
@@ -104,20 +124,22 @@ dersom `POSTGRES_PORT=55432`.
 
 Både Vite og Compose-web kan nås fra en telefon på samme lokale nettverk.
 Finn PC-ens lokale IPv4-adresse med `ipconfig`, og åpne
-`http://<LAN_IP>:5173/weight` på telefonen. `localhost` på telefonen peker på
-telefonen selv. API-kall går gjennom webserverens `/api`-proxy; backend og
-database trenger ikke eksponeres på nettverket.
+`http://<LAN_IP>:5173/` på telefonen. `localhost` på telefonen peker på
+telefonen selv. API-kall går gjennom webserverens `/api`-proxy; API-ene og
+databasene trenger ikke eksponeres på nettverket.
 
 PC-en må være på, nettverket må tillate trafikk mellom enhetene, og Windows-
 brannmuren må tillate innkommende TCP-trafikk på port 5173 for det aktuelle
 nettverket. Legg telefonens faktiske webadresse til `CLERK_AUTHORIZED_PARTIES`.
-Clerk kan kreve HTTPS for innlogging fra andre verter enn localhost; se
+Begge API-ene trenger samme tillatte webopprinnelse. Clerk kan kreve HTTPS for
+innlogging fra andre verter enn localhost; se
 [autentiseringsoppsettet](docs/authentication.md). Bruk et betrodd nettverk.
 
 ## Tester og kodekontroll
 
-Integrasjonstestene bruker en separat, midlertidig PostgreSQL-instans på
-port 5433. De skal aldri kjøres mot databasen med egne vektlogger.
+Vekttjenestens integrasjonstester bruker en separat, midlertidig
+PostgreSQL-instans på port 5433. De skal aldri kjøres mot databasen med
+egne vektlogger.
 
 ```powershell
 docker compose --profile test up -d --wait postgres-test
@@ -130,8 +152,12 @@ uv run pyright
 ```
 
 Testdatabasen har navnet `emberpath_test`, brukeren `emberpath` og det lokale
-testpassordet `emberpath_test`. Backendens README beskriver `TEST_DATABASE_URL`.
+testpassordet `emberpath_test`. Vekttjenestens README beskriver `TEST_DATABASE_URL`.
 Testdatabasen bruker minnelagring og mister innholdet når den stoppes.
+Ernæringstjenestens integrasjonstester krever en **annen**, disponibel
+PostgreSQL-database med navn som slutter på `_test`; se tjenestens README.
+Migrasjonstestene nedgraderer tabeller, så bruk aldri et volum med lagrede
+vektlogger eller ernæringsplaner som testdatabase.
 
 Kjør frontendkontrollene fra `Emberpath-web`:
 
