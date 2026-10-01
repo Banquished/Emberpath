@@ -173,6 +173,26 @@ Stopp testdatabasen fra `Emberpath` med:
 docker compose --profile test stop postgres-test
 ```
 
+## Ernæringsvisningen
+
+`/nutrition` samler «Active plan», «Calculator» og «History». En aktiv
+ernæringsplan vises først når den finnes; ellers åpnes kalkulatoren etter bekreftet
+tom planstatus. Feil i planlagringen vises separat fra kalkulatoren.
+Beregningsforhåndsvisninger og gjennomgang av nye ukedagsmål trenger ikke planlagring.
+
+En ny beregning går gjennom «Inputs», «Preview», «Weekday targets» og
+«Review and save», ett steg om gangen. Fanebytte og tilbakeknappen bevarer utkast;
+endring av inndata gjør avhengige forhåndsvisninger ugyldige, uten å endre en
+lagret plan. Kilder og utfyllende metodeforklaringer åpnes via
+informasjonskontroller. Påkrevde risikogrunnlag og bekreftelser er synlige ved
+lagring, og kalenderens IANA-tidssone må bekreftes eksplisitt.
+
+Protein per kg justeres i trinn på `0.1 g/kg/day`. Valg under `1` eller over
+`3 g/kg/day` gir bare en advarsel, ikke en ny avvisningsgrense eller ekstra
+bekreftelse. Faste gram sammenlignes med manuelt oppgitt vekt. Intervallet er
+et produktvalg for gjennomgang, ikke en sikkerhetsvurdering; eksisterende
+teknisk validering og lagrede øyeblikksbilder er uendret.
+
 ## API
 
 Se [import og eksport](docs/weight-data-transfer.md) for datafiler med komma, semikolon eller tabulator,
@@ -205,8 +225,16 @@ antall registreringer, gjennomsnittsvekt, første og siste registrering, samt
 endring i kg og prosent fra første til siste registrering. Dager uten målinger
 teller ikke i gjennomsnittet. Tall avrundes til to desimaler; endring krever minst
 to målinger. Tomme perioder gir antall 0 og `null` for de andre verdiene.
-Kortene over grafen følger samme periodefilter som grafen og historikken, og
+Oppsummeringskortene følger samme periodefilter som grafen og historikken, og
 oppdateres når en registrering opprettes, endres eller slettes.
+
+Vektvisningen samler graf og historikk i ett panel med fanene «Chart» og
+«History». «Log weight» og periodefilteret ligger ved panelet. Valgt periode,
+glidende gjennomsnitt og visning av mållinjen beholdes når fanen byttes.
+Historikkens side og antall rader per side beholdes også ved fanebytte.
+Periodeskifte går tilbake til første side, men beholder valgt antall rader.
+Import og eksport ligger nederst i visningen. Utfyllende graf- og
+målforklaringer åpnes via informasjonskontroller.
 
 Grafens glidende gjennomsnitt kan settes til 7, 14 eller 30 dager med
 «Rolling average». Standard er 7 dager. Backend tar parameteren
@@ -226,12 +254,21 @@ må datoen være etter startdatoen. Når et mål erstattes, beholdes det gamle m
 Et aktivt mål kan avsluttes eksplisitt med status `completed` eller `cancelled`;
 en måling som passerer målvekten fullfører ikke målet automatisk.
 
+Det aktive målet vises som et kompakt kort ved oppsummeringen. Kortet åpner
+en dialog for å opprette, endre, fullføre eller avbryte et mål. Målet følger
+ikke periodefilteret.
+
 Webappen viser det aktive målet med en stiplet, lavendelfarget linje i grafen.
 Uten måldato er linjen flat. Med måldato og lagret startvekt viser den en planlagt
-utvikling fra startvekten til målvekten. Grafen viser maksimalt én kalendermåned
-fremover, med uendret helning og faktisk måldato. «Show goal» skjuler eller viser
-mållinjen; målinger og oppsummeringer følger fortsatt det valgte periodefilteret.
-Linjen viser dagens aktive plan, ikke en prognose eller en historisk målkurve.
+utvikling fra startvekten til målvekten. For 1W, 2W og 1M viser grafen opptil
+halvparten av antallet kalenderdager i valgt periode fremover, avrundet ned
+til hele dager. For 3M, 6M, 12M og All vises opptil én kalendermåned fremover.
+Mållinjen stopper senest ved måldatoen, med uendret helning. «Show goal»
+skjuler eller viser mållinjen og eventuell akseutvidelse for målet.
+En datert målbane utenfor perioden eller forhåndsvinduet får en kort forklaring,
+ikke en kunstig flat mållinje. Målinger og oppsummeringer følger fortsatt
+det valgte periodefilteret. Linjen viser dagens aktive plan, ikke en prognose
+eller en historisk målkurve.
 
 `baseline_weight_kg` lagres på målet. Ved oppretting kan startvekten oppgis
 manuelt; ellers brukes siste registrering på eller før startdatoen. Et datert
